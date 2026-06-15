@@ -1,0 +1,416 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Caja Registradora">
+  <div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-3">
+    <div>
+      <h1 class="h3 fw-bold mb-1 text-white">Punto de Venta (Caja)</h1>
+      <p class="text-muted mb-0">Gestión rápida de salidas de inventario</p>
+    </div>
+  </div>
+
+  <div class="row h-100 g-4">
+    <!-- Columna Izquierda: Buscador de Productos -->
+    <div class="col-lg-7 d-flex flex-column">
+      <div class="glass-card mb-3 p-3">
+        <h2 class="h6 fw-bold text-white mb-3 text-uppercase tracking-wide"><i class="bi bi-search me-2"></i>Buscador Rápido</h2>
+        <div class="input-group">
+          <span class="input-group-text bg-transparent border-end-0 text-muted border-secondary"><i class="bi bi-upc-scan"></i></span>
+          <input type="text" class="form-control border-start-0 ps-0 border-secondary text-white shadow-none" id="searchInput" placeholder="Escribe el código de barras o el nombre del producto..." autofocus>
+        </div>
+      </div>
+      
+      <div class="glass-card flex-grow-1 overflow-auto p-0" style="height: calc(100vh - 280px); min-height: 400px;">
+        <div id="productosList" class="list-group list-group-flush rounded-3">
+          <!-- JS llenará esto -->
+          <div class="text-center p-5 text-muted mt-5">
+            <div class="spinner-border spinner-border-sm me-2" role="status"></div>Cargando productos...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna Derecha: Carrito de Compras -->
+    <div class="col-lg-5 d-flex flex-column">
+      <div class="glass-card flex-grow-1 d-flex flex-column p-0 overflow-hidden" style="height: calc(100vh - 180px); min-height: 500px;">
+        <div class="p-3 border-bottom border-secondary bg-dark bg-opacity-25 d-flex justify-content-between align-items-center">
+          <h2 class="h6 fw-bold text-white mb-0 text-uppercase tracking-wide"><i class="bi bi-cart3 me-2"></i>Carrito Actual</h2>
+          <span class="badge bg-primary rounded-pill" id="cartCount">0 items</span>
+        </div>
+        
+        <!-- Lista de Items -->
+        <div class="flex-grow-1 overflow-auto p-3 custom-scroll" id="carritoItems">
+          <!-- JS llenará el carrito -->
+          <div class="text-center text-muted my-5">
+            <i class="bi bi-cart-x fs-1 d-block mb-3 opacity-50"></i>
+            El carrito está vacío
+          </div>
+        </div>
+        
+        <!-- Totales y Consolidación -->
+        <div class="p-4 bg-dark bg-opacity-50 border-top border-secondary">
+          <div class="d-flex justify-content-between align-items-center mb-4">
+            <span class="text-muted text-uppercase small fw-bold tracking-wide">Total a Cobrar</span>
+            <span class="fs-2 fw-bold text-success" id="totalMonto">$0.00</span>
+          </div>
+          
+          <div class="mb-4">
+            <label class="form-label text-muted small text-uppercase fw-semibold mb-3 tracking-wide">Método de Pago</label>
+            <div class="d-flex gap-2">
+              <input type="radio" class="btn-check" name="metodo_pago" id="pago_efectivo" value="efectivo" checked>
+              <label class="btn btn-outline-light flex-grow-1 py-2" for="pago_efectivo"><i class="bi bi-cash me-1"></i> Efectivo</label>
+
+              <input type="radio" class="btn-check" name="metodo_pago" id="pago_tarjeta" value="tarjeta">
+              <label class="btn btn-outline-light flex-grow-1 py-2" for="pago_tarjeta"><i class="bi bi-credit-card me-1"></i> Tarjeta</label>
+
+              <input type="radio" class="btn-check" name="metodo_pago" id="pago_qr" value="qr">
+              <label class="btn btn-outline-light flex-grow-1 py-2" for="pago_qr"><i class="bi bi-qr-code-scan me-1"></i> QR</label>
+            </div>
+          </div>
+          
+          <button class="btn btn-primary-gradient w-100 py-3 fs-5 fw-bold shadow-lg" id="btnConsolidar" disabled>
+            <i class="bi bi-check2-circle me-2"></i>Consolidar Venta
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script src="/js/jspdf.umd.min.js" is:inline></script>
+<script is:inline>
+  // Variables globales
+  let todosLosProductos = [];
+  let carrito = []; // Estructura: { id_producto, nombre, precio_venta, cantidad, stock_max }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const productosList = document.getElementById('productosList');
+    const searchInput = document.getElementById('searchInput');
+    const carritoItems = document.getElementById('carritoItems');
+    const totalMonto = document.getElementById('totalMonto');
+    const btnConsolidar = document.getElementById('btnConsolidar');
+    const cartCount = document.getElementById('cartCount');
+
+    // 1. Cargar productos desde la API (Cliente)
+    async function fetchProductos() {
+      try {
+        const res = await fetch('/api/productos');
+        if (res.ok) {
+          todosLosProductos = await res.json();
+          renderProductos(todosLosProductos);
+        } else {
+          productosList.innerHTML = `<div class="text-center p-4 text-danger"><i class="bi bi-exclamation-circle me-2"></i>Error al cargar productos</div>`;
+        }
+      } catch (e) {
+        productosList.innerHTML = `<div class="text-center p-4 text-danger"><i class="bi bi-wifi-off me-2"></i>Fallo de conexión con la API</div>`;
+      }
+    }
+    
+    await fetchProductos();
+
+    // 2. Lógica de Búsqueda Reactiva
+    searchInput.addEventListener('input', (e) => {
+      const termino = e.target.value.toLowerCase().trim();
+      if (termino === '') {
+        renderProductos(todosLosProductos);
+        return;
+      }
+      const filtrados = todosLosProductos.filter(p => 
+        (p.nombre && p.nombre.toLowerCase().includes(termino)) || 
+        (p.codigo_barras && p.codigo_barras.toLowerCase().includes(termino))
+      );
+      renderProductos(filtrados);
+    });
+
+    // Permitir "Enter" en el buscador si solo hay 1 producto (pistola de código de barras)
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const termino = e.target.value.toLowerCase().trim();
+        const filtrados = todosLosProductos.filter(p => 
+          (p.codigo_barras && p.codigo_barras.toLowerCase() === termino)
+        );
+        if (filtrados.length === 1 && filtrados[0].stock_actual > 0) {
+          window.agregarAlCarrito(filtrados[0].id_producto, filtrados[0].nombre, filtrados[0].precio_venta, filtrados[0].stock_actual);
+          searchInput.value = '';
+          renderProductos(todosLosProductos);
+        }
+      }
+    });
+
+    // 3. Renderizar Lista de Productos (Izquierda)
+    function renderProductos(productosA_mostrar) {
+      if (productosA_mostrar.length === 0) {
+        productosList.innerHTML = `
+          <div class="text-center p-5 text-muted mt-4">
+            <i class="bi bi-search d-block fs-1 mb-3 opacity-50"></i>
+            No se encontraron resultados
+          </div>`;
+        return;
+      }
+
+      productosList.innerHTML = productosA_mostrar.map(p => {
+        const agotado = p.stock_actual <= 0;
+        return `
+          <div class="list-group-item list-group-item-action bg-transparent border-bottom border-secondary text-white p-3 d-flex justify-content-between align-items-center transition" style="transition: background 0.2s;">
+            <div>
+              <div class="fw-bold mb-1 ${agotado ? 'text-muted text-decoration-line-through' : ''}">${p.nombre}</div>
+              <div class="small d-flex gap-3 mt-2">
+                <span class="text-secondary font-monospace"><i class="bi bi-upc"></i> ${p.codigo_barras || 'S/N'}</span>
+                <span class="${agotado ? 'text-danger fw-bold' : 'text-info'}"><i class="bi bi-box-seam me-1"></i> Stock: ${p.stock_actual}</span>
+              </div>
+            </div>
+            <div class="text-end">
+              <div class="fw-bold text-success mb-2 fs-5">$${Number(p.precio_venta).toFixed(2)}</div>
+              <button class="btn btn-sm px-3 ${agotado ? 'btn-secondary disabled' : 'btn-outline-primary'}" 
+                onclick="agregarAlCarrito(${p.id_producto}, '${p.nombre.replace(/'/g, "\\'")}', ${p.precio_venta}, ${p.stock_actual})"
+                ${agotado ? 'disabled' : ''}>
+                <i class="bi bi-cart-plus me-1"></i> Añadir
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 4. Lógica del Carrito (Global functions)
+    window.agregarAlCarrito = (id, nombre, precio, stock_max) => {
+      const existe = carrito.find(item => item.id_producto === id);
+      if (existe) {
+        if (existe.cantidad < stock_max) {
+          existe.cantidad++;
+        } else {
+          Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Stock máximo alcanzado', showConfirmButton: false, timer: 1500, background: '#1e1f22', color: '#fff' });
+        }
+      } else {
+        carrito.push({ id_producto: id, nombre, precio_venta: precio, cantidad: 1, stock_max });
+      }
+      actualizarCarrito();
+    };
+
+    window.modificarCantidad = (id, delta) => {
+      const item = carrito.find(i => i.id_producto === id);
+      if (!item) return;
+
+      item.cantidad += delta;
+      if (item.cantidad > item.stock_max) {
+        item.cantidad = item.stock_max;
+        Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Stock máximo alcanzado', showConfirmButton: false, timer: 1500, background: '#1e1f22', color: '#fff' });
+      } else if (item.cantidad <= 0) {
+        carrito = carrito.filter(i => i.id_producto !== id);
+      }
+      actualizarCarrito();
+    };
+
+    window.eliminarItem = (id) => {
+      carrito = carrito.filter(i => i.id_producto !== id);
+      actualizarCarrito();
+    };
+
+    // 5. Renderizar y Calcular Carrito (Derecha)
+    function actualizarCarrito() {
+      const cantItems = carrito.reduce((acc, curr) => acc + curr.cantidad, 0);
+      cartCount.textContent = `${cantItems} items`;
+
+      if (carrito.length === 0) {
+        carritoItems.innerHTML = `
+          <div class="text-center text-muted my-5 mt-5 pt-4">
+            <i class="bi bi-cart-x fs-1 d-block mb-3 opacity-50"></i>
+            Añade productos para comenzar
+          </div>`;
+        totalMonto.textContent = '$0.00';
+        btnConsolidar.disabled = true;
+        return;
+      }
+
+      let total = 0;
+      carritoItems.innerHTML = carrito.map(item => {
+        const subtotal = item.precio_venta * item.cantidad;
+        total += subtotal;
+        return `
+          <div class="d-flex justify-content-between align-items-center mb-3 bg-dark bg-opacity-50 p-3 rounded-4 border border-secondary shadow-sm transition-all">
+            <div class="flex-grow-1 pe-3" style="min-width: 0;">
+              <div class="fw-semibold text-white text-truncate mb-1" title="${item.nombre}">${item.nombre}</div>
+              <div class="text-success fw-bold">$${subtotal.toFixed(2)}</div>
+            </div>
+            
+            <div class="d-flex align-items-center gap-3 bg-dark rounded-pill px-2 py-1 shadow-inner">
+              <button class="btn btn-sm btn-link text-white p-1 text-decoration-none" onclick="modificarCantidad(${item.id_producto}, -1)"><i class="bi bi-dash-circle fs-5"></i></button>
+              <span class="text-white fw-bold" style="min-width: 24px; text-align: center;">${item.cantidad}</span>
+              <button class="btn btn-sm btn-link text-white p-1 text-decoration-none" onclick="modificarCantidad(${item.id_producto}, 1)"><i class="bi bi-plus-circle fs-5"></i></button>
+            </div>
+            
+            <button class="btn btn-sm btn-link text-danger ms-3 p-2" onclick="eliminarItem(${item.id_producto})" title="Eliminar"><i class="bi bi-trash3 fs-5"></i></button>
+          </div>
+        `;
+      }).join('');
+
+      totalMonto.textContent = '$' + total.toFixed(2);
+      btnConsolidar.disabled = false;
+    }
+
+    // 6. Enviar Venta al Backend
+    btnConsolidar.addEventListener('click', async () => {
+      try {
+        const metodo_pago = document.querySelector('input[name="metodo_pago"]:checked').value;
+        
+        const { value: formValues } = await Swal.fire({
+          title: 'Datos del Cliente',
+          html: `
+            <input id="swal-input-nombre" class="swal2-input bg-dark text-white border-secondary mb-3" style="width: 80%" placeholder="Nombre Completo (Obligatorio)">
+            <input id="swal-input-nit" class="swal2-input bg-dark text-white border-secondary" style="width: 80%" placeholder="NIT / CI (Opcional)">
+          `,
+          focusConfirm: false,
+          background: '#1e1f22',
+          color: '#fff',
+          confirmButtonColor: '#4f46e5',
+          showCancelButton: true,
+          cancelButtonText: 'Cancelar',
+          preConfirm: () => {
+            const nombre = document.getElementById('swal-input-nombre').value.trim();
+            const nit_ci = document.getElementById('swal-input-nit').value.trim();
+            if (!nombre) {
+              Swal.showValidationMessage('El nombre es obligatorio');
+              return false;
+            }
+            return { nombre, nit_ci };
+          }
+        });
+
+        if (!formValues) return;
+
+        const payload = {
+          metodo_pago,
+          cliente: formValues,
+          items: carrito.map(i => ({ id_producto: i.id_producto, cantidad: i.cantidad }))
+        };
+
+        btnConsolidar.disabled = true;
+        const originalHtml = btnConsolidar.innerHTML;
+        btnConsolidar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+
+        try {
+          const res = await fetch('/api/ventas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            try {
+              generarFacturaPDF(formValues, carrito, data.venta);
+            } catch(pdfErr) {
+              console.error("Error al generar PDF:", pdfErr);
+              alert("La venta se procesó pero hubo un error al generar el PDF: " + pdfErr.message);
+            }
+
+            await Swal.fire({
+              title: '¡Venta Procesada!',
+              text: `Operación exitosa. Total cobrado: $${(carrito.reduce((acc, curr) => acc + (curr.precio_venta * curr.cantidad), 0)).toFixed(2)}. La factura se está descargando.`,
+              icon: 'success',
+              background: '#1e1f22',
+              color: '#fff',
+              confirmButtonColor: '#4f46e5',
+              timer: 3500,
+              showConfirmButton: false
+            });
+            
+            carrito = [];
+            actualizarCarrito();
+            searchInput.value = '';
+            
+            await fetchProductos();
+          } else {
+            throw new Error(data.error || 'Error al procesar la venta');
+          }
+        } catch (err) {
+          Swal.fire({
+            title: 'Venta Rechazada',
+            text: err.message,
+            icon: 'error',
+            background: '#1e1f22',
+            color: '#fff',
+            confirmButtonColor: '#4f46e5'
+          });
+        } finally {
+          if(carrito.length > 0) btnConsolidar.disabled = false;
+          btnConsolidar.innerHTML = '<i class="bi bi-check2-circle me-2"></i>Consolidar Venta';
+        }
+      } catch (errGlobal) {
+        console.error("Error inesperado en click de consolidar:", errGlobal);
+        alert("Error crítico del navegador: " + errGlobal.message);
+      }
+    });
+
+
+
+  });
+
+    // Función para generar PDF
+    function generarFacturaPDF(cliente, items_vendidos, ventaDB) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      
+      doc.setFontSize(22);
+      doc.text("MiniSuper - Factura Comercial", 105, 20, null, null, "center");
+      
+      doc.setFontSize(12);
+      doc.text(`Fecha: ${new Date().toLocaleString()}`, 20, 35);
+      doc.text(`Nro Venta: ${ventaDB.id_venta}`, 20, 42);
+      doc.text(`Cliente: ${cliente.nombre}`, 20, 55);
+      if(cliente.nit_ci) doc.text(`NIT/CI: ${cliente.nit_ci}`, 20, 62);
+      
+      let y = 80;
+      doc.setFontSize(14);
+      doc.text("Detalle de Compras", 20, y);
+      y += 10;
+      
+      doc.setFontSize(10);
+      doc.text("Producto", 20, y);
+      doc.text("Cant", 120, y);
+      doc.text("Precio", 140, y);
+      doc.text("Subtotal", 170, y);
+      y += 5;
+      doc.line(20, y, 190, y);
+      y += 8;
+      
+      let total = 0;
+      items_vendidos.forEach(item => {
+        const sub = item.cantidad * item.precio_venta;
+        total += sub;
+        doc.text(item.nombre.substring(0, 40), 20, y);
+        doc.text(item.cantidad.toString(), 120, y);
+        doc.text(`$${item.precio_venta.toFixed(2)}`, 140, y);
+        doc.text(`$${sub.toFixed(2)}`, 170, y);
+        y += 8;
+      });
+      
+      doc.line(20, y, 190, y);
+      y += 10;
+      doc.setFontSize(14);
+      doc.text(`Total: $${total.toFixed(2)}`, 170, y, null, null, "right");
+      
+      doc.save(`Factura_MiniSuper_V${ventaDB.id_venta}.pdf`);
+    }
+</script>
+
+<style>
+  .custom-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+  }
+  .custom-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .tracking-wide {
+    letter-spacing: 0.05em;
+  }
+</style>

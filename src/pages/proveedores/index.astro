@@ -1,0 +1,278 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+// Fetch de proveedores (SSR)
+const origin = Astro.url.origin;
+const response = await fetch(`${origin}/api/proveedores`, {
+	headers: { cookie: Astro.request.headers.get('cookie') || '' }
+});
+let proveedores = [];
+
+if (response.ok) {
+	proveedores = await response.json();
+}
+---
+
+<Layout title="Directorio de Proveedores">
+	<div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-3">
+		<div>
+			<h1 class="h3 fw-bold mb-1 text-white">Directorio de Proveedores</h1>
+			<p class="text-muted mb-0">Gestión de abastecedores y contactos comerciales</p>
+		</div>
+	</div>
+
+	<div class="row g-4">
+		<!-- Columna Izquierda: Formulario -->
+		<div class="col-lg-4">
+			<div class="glass-card">
+				<h2 class="h5 fw-bold text-white mb-4"><i class="bi bi-building-add me-2 text-primary"></i>Nuevo Proveedor</h2>
+				<form id="formNuevoProveedor" class="needs-validation" novalidate>
+					
+					<div class="mb-3">
+						<label class="form-label text-muted small text-uppercase fw-semibold">NIT / CI *</label>
+						<input type="text" class="form-control" id="nit_ci" name="nit_ci" required>
+						<div class="invalid-feedback">Obligatorio.</div>
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Nombre Empresa *</label>
+						<input type="text" class="form-control" id="nombre_empresa" name="nombre_empresa" required>
+						<div class="invalid-feedback">Obligatorio.</div>
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Nombre Contacto</label>
+						<input type="text" class="form-control" id="nombre_contacto" name="nombre_contacto">
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Teléfono</label>
+						<input type="text" class="form-control" id="telefono" name="telefono">
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Email</label>
+						<input type="email" class="form-control" id="email" name="email">
+					</div>
+
+					<div class="mb-4">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Dirección</label>
+						<textarea class="form-control custom-scroll" id="direccion" name="direccion" rows="2"></textarea>
+					</div>
+
+					<button type="submit" class="btn btn-primary-gradient w-100 py-2 fw-bold" id="btnSubmit">
+						<i class="bi bi-save me-2"></i>Guardar Proveedor
+					</button>
+				</form>
+			</div>
+		</div>
+
+		<!-- Columna Derecha: Tabla -->
+		<div class="col-lg-8">
+			<div class="glass-card p-0 overflow-hidden h-100 d-flex flex-column">
+				<div class="p-3 border-bottom border-secondary bg-dark bg-opacity-25 d-flex justify-content-between align-items-center">
+					<h2 class="h6 fw-bold text-white mb-0 text-uppercase tracking-wide"><i class="bi bi-list-ul me-2"></i>Lista de Proveedores</h2>
+					<span class="badge bg-secondary">{proveedores.length} registros</span>
+				</div>
+				<div class="table-responsive flex-grow-1 custom-scroll" style="max-height: calc(100vh - 200px);">
+					<table class="table table-hover align-middle mb-0">
+						<thead style="background: rgba(0,0,0,0.2);">
+							<tr>
+								<th class="ps-4 py-3">Empresa</th>
+								<th class="py-3">NIT/CI</th>
+								<th class="py-3">Contacto</th>
+								<th class="py-3">Tel/Email</th>
+								<th class="text-end pe-4 py-3">Acciones</th>
+							</tr>
+						</thead>
+						<tbody>
+							{proveedores.length === 0 ? (
+								<tr>
+									<td colspan="5" class="text-center py-5 text-muted">
+										<i class="bi bi-buildings fs-1 d-block mb-2 opacity-50"></i>
+										No hay proveedores registrados.
+									</td>
+								</tr>
+							) : (
+								proveedores.map((prov: any) => (
+									<tr>
+										<td class="ps-4">
+											<div class="fw-semibold text-white">{prov.nombre_empresa}</div>
+											{prov.direccion && <small class="text-muted d-block text-truncate" style="max-width: 150px;" title={prov.direccion}><i class="bi bi-geo-alt me-1"></i>{prov.direccion}</small>}
+										</td>
+										<td><span class="badge bg-dark border border-secondary text-light font-monospace">{prov.nit_ci}</span></td>
+										<td><span class="text-light">{prov.nombre_contacto || '-'}</span></td>
+										<td>
+											<div class="d-flex flex-column">
+												{prov.telefono && <small class="text-info"><i class="bi bi-telephone me-1"></i>{prov.telefono}</small>}
+												{prov.email && <small class="text-muted"><i class="bi bi-envelope me-1"></i>{prov.email}</small>}
+												{!prov.telefono && !prov.email && <small class="text-muted">-</small>}
+											</div>
+										</td>
+										<td class="text-end pe-4">
+											<button class="btn btn-sm btn-outline-light border-0 me-1" title="Editar" onclick={`editarProveedor(${prov.id_proveedor}, '${prov.nombre_empresa.replace(/'/g, "\\'")}', '${prov.nit_ci}', '${(prov.nombre_contacto || '').replace(/'/g, "\\'")}', '${(prov.telefono || '')}', '${(prov.email || '')}', '${(prov.direccion || '').replace(/'/g, "\\'")}')`}><i class="bi bi-pencil"></i></button>
+											<button class="btn btn-sm btn-outline-danger border-0" title="Eliminar" onclick={`eliminarProveedor(${prov.id_proveedor})`}><i class="bi bi-trash"></i></button>
+										</td>
+									</tr>
+								))
+							)}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+</Layout>
+
+<script is:inline>
+	document.addEventListener('DOMContentLoaded', () => {
+		const form = document.getElementById('formNuevoProveedor');
+		const btnSubmit = document.getElementById('btnSubmit');
+
+		form.addEventListener('submit', async (e) => {
+			e.preventDefault();
+			
+			if (!form.checkValidity()) {
+				e.stopPropagation();
+				form.classList.add('was-validated');
+				return;
+			}
+
+			const formData = new FormData(form);
+			const data = Object.fromEntries(formData.entries());
+
+			const originalText = btnSubmit.innerHTML;
+
+			try {
+				btnSubmit.disabled = true;
+				btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+
+				const response = await fetch('/api/proveedores', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(data)
+				});
+
+				let result;
+				try {
+					result = await response.json();
+				} catch (e) {
+					throw new Error('La respuesta del servidor no es un JSON válido.');
+				}
+
+				if (!response.ok || !result.success) {
+					throw new Error(result.error || 'Error al guardar el proveedor');
+				}
+
+				await Swal.fire({
+					title: '¡Registrado!',
+					text: 'El proveedor ha sido guardado exitosamente.',
+					icon: 'success',
+					background: '#1e1f22',
+					color: '#fff',
+					confirmButtonColor: '#4f46e5',
+					timer: 1500,
+					showConfirmButton: false
+				});
+				window.location.reload();
+				
+			} catch (error) {
+				Swal.fire({
+					title: 'Atención',
+					text: error.message,
+					icon: 'error',
+					background: '#1e1f22',
+					color: '#fff',
+					confirmButtonColor: '#4f46e5'
+				});
+			} finally {
+				btnSubmit.disabled = false;
+				btnSubmit.innerHTML = originalText;
+			}
+		});
+	});
+
+	async function eliminarProveedor(id) {
+		const result = await Swal.fire({
+			title: '¿Eliminar Proveedor?',
+			text: "Esta acción no se puede deshacer.",
+			icon: 'warning',
+			showCancelButton: true,
+			background: '#1e1f22',
+			color: '#fff',
+			confirmButtonColor: '#ef4444',
+			cancelButtonColor: '#4f46e5',
+			confirmButtonText: 'Sí, eliminar',
+			cancelButtonText: 'Cancelar'
+		});
+
+		if (result.isConfirmed) {
+			try {
+				const response = await fetch(`/api/proveedores/${id}`, { method: 'DELETE' });
+				if (response.ok) {
+					window.location.reload();
+				} else {
+					const data = await response.json();
+					throw new Error(data.error || 'Error al eliminar');
+				}
+			} catch (error) {
+				Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#1e1f22', color: '#fff' });
+			}
+		}
+	}
+
+	async function editarProveedor(id, emp, nit, cont, tel, em, dir) {
+		const { value: formValues } = await Swal.fire({
+			title: 'Editar Proveedor',
+			html:
+				`<div class="row"><div class="col-6 text-start mb-2"><label class="text-white small mb-1">Empresa</label><input id="swal-prov1" class="form-control" value="${emp}"></div>` +
+				`<div class="col-6 text-start mb-2"><label class="text-white small mb-1">NIT/CI</label><input id="swal-prov2" class="form-control" value="${nit}"></div></div>` +
+				`<div class="row"><div class="col-6 text-start mb-2"><label class="text-white small mb-1">Contacto</label><input id="swal-prov3" class="form-control" value="${cont}"></div>` +
+				`<div class="col-6 text-start mb-2"><label class="text-white small mb-1">Teléfono</label><input id="swal-prov4" class="form-control" value="${tel}"></div></div>` +
+				`<div class="text-start mb-2"><label class="text-white small mb-1">Email</label><input id="swal-prov5" type="email" class="form-control" value="${em}"></div>` +
+				`<div class="text-start mb-2"><label class="text-white small mb-1">Dirección</label><textarea id="swal-prov6" class="form-control">${dir}</textarea></div>`,
+			focusConfirm: false,
+			showCancelButton: true,
+			background: '#1e1f22',
+			color: '#fff',
+			confirmButtonColor: '#4f46e5',
+			confirmButtonText: 'Guardar Cambios',
+			width: '600px',
+			preConfirm: () => {
+				const e = document.getElementById('swal-prov1').value;
+				const n = document.getElementById('swal-prov2').value;
+				if (!e || !n) { Swal.showValidationMessage('Empresa y NIT/CI son obligatorios'); return false; }
+				return {
+					nombre_empresa: e,
+					nit_ci: n,
+					nombre_contacto: document.getElementById('swal-prov3').value,
+					telefono: document.getElementById('swal-prov4').value,
+					email: document.getElementById('swal-prov5').value,
+					direccion: document.getElementById('swal-prov6').value
+				};
+			}
+		});
+
+		if (formValues) {
+			try {
+				const res = await fetch(`/api/proveedores/${id}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(formValues)
+				});
+				if (!res.ok) throw new Error('Error al actualizar proveedor');
+				await Swal.fire({ title: 'Actualizado', text: 'Proveedor modificado.', icon: 'success', background: '#1e1f22', color: '#fff', timer: 1500, showConfirmButton: false });
+				window.location.reload();
+			} catch (error) {
+				Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#1e1f22', color: '#fff' });
+			}
+		}
+	}
+</script>
+
+<style>
+  .custom-scroll::-webkit-scrollbar { width: 6px; }
+  .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+  .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+  .custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+</style>

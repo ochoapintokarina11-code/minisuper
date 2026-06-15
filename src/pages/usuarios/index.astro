@@ -1,0 +1,198 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const origin = Astro.url.origin;
+const response = await fetch(`${origin}/api/auth/usuarios`, {
+	headers: { cookie: Astro.request.headers.get('cookie') || '' }
+});
+
+let usuarios = [];
+if (response.ok) {
+	usuarios = await response.json();
+}
+
+const formatearFecha = (fechaStr: string) => {
+	if (!fechaStr) return 'N/A';
+	const fecha = new Date(fechaStr);
+	return fecha.toLocaleDateString('es-ES', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' });
+};
+---
+
+<Layout title="Gestión de Personal">
+	<div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-3">
+		<div>
+			<h1 class="h3 fw-bold mb-1 text-white">Personal Registrado</h1>
+			<p class="text-muted mb-0">Administra los accesos y cuentas del sistema</p>
+		</div>
+		<a href="/usuarios/nuevo" class="btn btn-primary-gradient">
+			<i class="bi bi-person-plus me-2"></i>Registrar Empleado
+		</a>
+	</div>
+
+	<div class="glass-card p-0 overflow-hidden">
+		<div class="table-responsive">
+			<table class="table table-hover align-middle mb-0">
+				<thead style="background: rgba(0,0,0,0.2);">
+					<tr>
+						<th class="ps-4 py-3">Nombre / Usuario</th>
+						<th class="py-3">Rol</th>
+						<th class="py-3">Fecha Alta</th>
+						<th class="text-end pe-4 py-3">Acciones</th>
+					</tr>
+				</thead>
+				<tbody>
+					{usuarios.length === 0 ? (
+						<tr>
+							<td colspan="4" class="text-center py-5 text-muted">
+								No hay personal registrado.
+							</td>
+						</tr>
+					) : (
+						usuarios.map((usr: any) => (
+							<tr>
+								<td class="ps-4">
+									<div class="fw-semibold text-white">{usr.nombre_real}</div>
+									<div class="text-muted small">{usr.username}</div>
+								</td>
+								<td>
+									{usr.rol === 'admin' && <span class="badge bg-primary">Admin</span>}
+									{usr.rol === 'vendedor' && <span class="badge bg-info text-dark">Vendedor</span>}
+									{usr.rol === 'almacenero' && <span class="badge bg-warning text-dark">Almacenero</span>}
+								</td>
+								<td><span class="text-light">{formatearFecha(usr.creado_en)}</span></td>
+								<td class="text-end pe-4">
+									<button class="btn btn-sm btn-outline-light border-0 me-1" title="Editar Rol/Contraseña" onclick={`abrirModalEditar(${usr.id}, '${usr.nombre_real}', '${usr.rol}')`}>
+										<i class="bi bi-pencil"></i>
+									</button>
+									<button class="btn btn-sm btn-outline-danger border-0" title="Eliminar" onclick={`eliminarUsuario(${usr.id})`} disabled={usr.rol === 'admin'}>
+										<i class="bi bi-trash"></i>
+									</button>
+								</td>
+							</tr>
+						))
+					)}
+				</tbody>
+			</table>
+		</div>
+	</div>
+
+	<!-- Modal Edición -->
+	<div class="modal fade" id="modalEditarUsuario" tabindex="-1" aria-hidden="true" data-bs-theme="dark">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content glass-card p-0 border-0">
+				<div class="modal-header border-bottom border-secondary">
+					<h5 class="modal-title text-white">Editar Usuario</h5>
+					<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<form id="formEditarUsuario">
+					<div class="modal-body p-4">
+						<input type="hidden" id="edit_id" name="id">
+						
+						<div class="mb-3">
+							<label class="form-label text-muted small text-uppercase">Nombre Real</label>
+							<input type="text" class="form-control" id="edit_nombre" name="nombre_real" required>
+						</div>
+
+						<div class="mb-3">
+							<label class="form-label text-muted small text-uppercase">Nuevo Rol</label>
+							<select class="form-select" id="edit_rol" name="rol" required>
+								<option value="vendedor">Vendedor (Cajero)</option>
+								<option value="almacenero">Almacenero</option>
+								<option value="admin">Administrador</option>
+							</select>
+						</div>
+
+						<div class="mb-3">
+							<label class="form-label text-muted small text-uppercase">Nueva Contraseña (Opcional)</label>
+							<input type="password" class="form-control" id="edit_password" name="password" minlength="6" placeholder="Dejar en blanco para no cambiar">
+						</div>
+					</div>
+					<div class="modal-footer border-top border-secondary">
+						<button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancelar</button>
+						<button type="submit" class="btn btn-primary-gradient" id="btnGuardarEdicion">Guardar Cambios</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+
+</Layout>
+
+<script is:inline>
+	let modalEdicion;
+	
+	document.addEventListener('DOMContentLoaded', () => {
+		modalEdicion = new bootstrap.Modal(document.getElementById('modalEditarUsuario'));
+
+		document.getElementById('formEditarUsuario').addEventListener('submit', async (e) => {
+			e.preventDefault();
+			const form = e.target;
+			const id = document.getElementById('edit_id').value;
+			const nombre_real = document.getElementById('edit_nombre').value;
+			const rol = document.getElementById('edit_rol').value;
+			const password = document.getElementById('edit_password').value;
+
+			const body = { nombre_real, rol };
+			if (password) body.password = password;
+
+			const btn = document.getElementById('btnGuardarEdicion');
+			const originalText = btn.innerHTML;
+			btn.disabled = true;
+			btn.innerHTML = 'Guardando...';
+
+			try {
+				const res = await fetch(`/api/auth/usuarios/${id}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(body)
+				});
+				const result = await res.json();
+				if (!res.ok) throw new Error(result.error);
+				
+				await Swal.fire({ title: 'Actualizado', text: 'Usuario actualizado exitosamente', icon: 'success', background: '#1e1f22', color: '#fff' });
+				window.location.reload();
+			} catch(err) {
+				Swal.fire({ title: 'Error', text: err.message, icon: 'error', background: '#1e1f22', color: '#fff' });
+				btn.disabled = false;
+				btn.innerHTML = originalText;
+			}
+		});
+	});
+
+	function abrirModalEditar(id, nombre, rol) {
+		document.getElementById('edit_id').value = id;
+		document.getElementById('edit_nombre').value = nombre;
+		document.getElementById('edit_rol').value = rol;
+		document.getElementById('edit_password').value = '';
+		modalEdicion.show();
+	}
+
+	async function eliminarUsuario(id) {
+		const result = await Swal.fire({
+			title: '¿Eliminar cuenta?',
+			text: "El empleado perderá el acceso inmediatamente.",
+			icon: 'warning',
+			showCancelButton: true,
+			background: '#1e1f22',
+			color: '#fff',
+			confirmButtonColor: '#ef4444',
+			cancelButtonColor: '#4f46e5',
+			confirmButtonText: 'Sí, eliminar',
+			cancelButtonText: 'Cancelar'
+		});
+
+		if (result.isConfirmed) {
+			try {
+				const response = await fetch(`/api/auth/usuarios/${id}`, { method: 'DELETE' });
+				if (!response.ok) {
+					const res = await response.json();
+					throw new Error(res.error || 'Error al eliminar');
+				}
+				await Swal.fire({ title: 'Eliminado', text: 'Cuenta revocada', icon: 'success', background: '#1e1f22', color: '#fff' });
+				window.location.reload();
+			} catch (error) {
+				Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#1e1f22', color: '#fff' });
+			}
+		}
+	}
+</script>

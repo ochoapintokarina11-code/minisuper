@@ -1,0 +1,170 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Registrar Personal">
+	<div class="mb-4">
+		<h1 class="h3 fw-bold mb-1 text-white">Alta de Personal</h1>
+		<p class="text-muted">Crea cuentas de acceso para tus vendedores y almaceneros.</p>
+	</div>
+
+	<div class="row">
+		<div class="col-lg-7">
+			<div class="glass-card">
+				<h2 class="h5 fw-bold text-white mb-4"><i class="bi bi-person-plus me-2 text-primary"></i>Datos del Nuevo Empleado</h2>
+				
+				<form id="formNuevoUsuario" class="needs-validation" novalidate>
+					
+					<div class="mb-4">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Nombre Completo</label>
+						<div class="input-group">
+							<span class="input-group-text bg-transparent border-end-0 text-muted"><i class="bi bi-person-badge"></i></span>
+							<input type="text" class="form-control border-start-0 ps-0" id="nombre_real" name="nombre_real" required>
+						</div>
+					</div>
+
+					<div class="mb-4">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Correo Electrónico (Usuario)</label>
+						<div class="input-group">
+							<span class="input-group-text bg-transparent border-end-0 text-muted"><i class="bi bi-envelope"></i></span>
+							<input type="email" class="form-control border-start-0 ps-0" id="username" name="username" placeholder="ejemplo@minisuper.com" required>
+						</div>
+					</div>
+
+					<div class="mb-4">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Contraseña Temporal</label>
+						<div class="input-group">
+							<span class="input-group-text bg-transparent border-end-0 text-muted"><i class="bi bi-key"></i></span>
+							<input type="password" class="form-control border-start-0 ps-0" id="password" name="password" minlength="6" required>
+						</div>
+						<div class="form-text text-muted small mt-1">Mínimo 6 caracteres.</div>
+					</div>
+
+					<div class="mb-5">
+						<label class="form-label text-muted small text-uppercase fw-semibold mb-3">Rol del Sistema</label>
+						<div class="d-flex gap-3 flex-wrap">
+							<div class="flex-grow-1">
+								<input type="radio" class="btn-check" name="rol" id="rol_vendedor" value="vendedor">
+								<label class="btn btn-outline-light w-100 py-3 text-start px-4 h-100 d-flex flex-column justify-content-center" for="rol_vendedor">
+									<div class="fw-bold mb-1"><i class="bi bi-cart3 me-2 text-info"></i>Vendedor (Cajero)</div>
+									<small class="text-muted d-block" style="white-space: normal;">Solo tiene acceso a la Caja Registradora y puede consultar el stock del inventario.</small>
+								</label>
+							</div>
+							<div class="flex-grow-1">
+								<input type="radio" class="btn-check" name="rol" id="rol_almacenero" value="almacenero">
+								<label class="btn btn-outline-light w-100 py-3 text-start px-4 h-100 d-flex flex-column justify-content-center" for="rol_almacenero">
+									<div class="fw-bold mb-1"><i class="bi bi-box-seam me-2 text-warning"></i>Almacenero</div>
+									<small class="text-muted d-block" style="white-space: normal;">Gestiona Proveedores, Categorías y registra ingresos de nuevos Productos. No puede vender.</small>
+								</label>
+							</div>
+						</div>
+					</div>
+
+					<div class="d-flex justify-content-end gap-3 border-top pt-4" style="border-color: var(--glass-border) !important;">
+						<button type="submit" class="btn btn-primary-gradient px-4" id="btnSubmit">
+							<i class="bi bi-check2-circle me-2"></i>Registrar Cuenta
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+
+		<div class="col-lg-5 d-none d-lg-block">
+			<div class="glass-card h-100 d-flex flex-column justify-content-center align-items-center text-center p-5">
+				<div class="rounded-circle d-flex align-items-center justify-content-center mb-4" style="width: 80px; height: 80px; background: rgba(var(--accent), 0.2);">
+					<i class="bi bi-shield-lock text-primary fs-1"></i>
+				</div>
+				<h4 class="h5 fw-bold text-white mb-3">Seguridad y Control</h4>
+				<p class="text-muted small mb-0">Esta sección es de acceso exclusivo para el Administrador. Todo el personal registrado aquí quedará mapeado en los registros de auditoría (por ejemplo, quién efectuó cada venta en caja).</p>
+			</div>
+		</div>
+	</div>
+</Layout>
+
+<script is:inline>
+	document.addEventListener('DOMContentLoaded', () => {
+		const form = document.getElementById('formNuevoUsuario');
+		const btnSubmit = document.getElementById('btnSubmit');
+
+		form.addEventListener('submit', async (e) => {
+			e.preventDefault();
+			
+			if (!form.checkValidity()) {
+				e.stopPropagation();
+				form.classList.add('was-validated');
+				return;
+			}
+
+			const formData = new FormData(form);
+			const data = Object.fromEntries(formData.entries());
+			
+			if (!data.rol) {
+				await Swal.fire({ title: 'Atención', text: 'Por favor, selecciona un Rol del Sistema.', icon: 'warning', background: '#1e1f22', color: '#fff' });
+				return;
+			}
+
+			const originalText = btnSubmit.innerHTML;
+
+			try {
+				btnSubmit.disabled = true;
+				btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos de timeout
+
+				const response = await fetch('/api/auth/usuarios', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(data),
+					signal: controller.signal
+				});
+				clearTimeout(timeoutId);
+
+				let result;
+				try {
+					result = await response.json();
+				} catch (err) {
+					throw new Error('Respuesta del servidor no es un JSON válido');
+				}
+
+				if (!response.ok || !result.success) {
+					throw new Error(result?.error || 'No se pudo crear el usuario en el servidor');
+				}
+
+				try {
+					await Swal.fire({
+						title: '¡Personal Registrado!',
+						text: 'La nueva cuenta ha sido habilitada exitosamente.',
+						icon: 'success',
+						background: '#1e1f22',
+						color: '#fff',
+						confirmButtonColor: '#4f46e5'
+					});
+				} catch(swalErr) {
+					alert('¡Personal Registrado! La nueva cuenta ha sido habilitada exitosamente.');
+				}
+				
+				form.reset();
+				form.classList.remove('was-validated');
+
+			} catch (error) {
+				console.error("Error detallado al registrar:", error);
+				try {
+					await Swal.fire({
+						title: 'Error de Registro',
+						text: error.message || 'Error desconocido al procesar la solicitud',
+						icon: 'error',
+						background: '#1e1f22',
+						color: '#fff',
+						confirmButtonColor: '#4f46e5'
+					});
+				} catch(swalErr) {
+					alert('Error de Registro: ' + (error.message || 'Error desconocido'));
+				}
+			} finally {
+				btnSubmit.disabled = false;
+				btnSubmit.innerHTML = originalText;
+			}
+		});
+	});
+</script>

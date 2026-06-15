@@ -1,0 +1,237 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+// Fetch de categorías para listarlas (SSR)
+const origin = Astro.url.origin;
+const response = await fetch(`${origin}/api/categorias`, {
+	headers: { cookie: Astro.request.headers.get('cookie') || '' }
+});
+let categorias = [];
+
+if (response.ok) {
+	categorias = await response.json();
+}
+---
+
+<Layout title="Gestión de Categorías">
+	<div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-3">
+		<div>
+			<h1 class="h3 fw-bold mb-1 text-white">Categorías de Inventario</h1>
+			<p class="text-muted mb-0">Administra las líneas de producto de tu supermercado</p>
+		</div>
+	</div>
+
+	<div class="row g-4">
+		<!-- Columna Izquierda: Formulario de Nueva Categoría -->
+		<div class="col-lg-4">
+			<div class="glass-card h-100">
+				<h2 class="h5 fw-bold text-white mb-4"><i class="bi bi-tag-fill me-2 text-primary"></i>Nueva Categoría</h2>
+				<form id="formNuevaCategoria" class="needs-validation" novalidate>
+					<div class="mb-3">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Nombre de la Categoría</label>
+						<input type="text" class="form-control" id="nombre" name="nombre" placeholder="Ej: Lácteos" required>
+						<div class="invalid-feedback">El nombre es obligatorio.</div>
+					</div>
+					<div class="mb-4">
+						<label class="form-label text-muted small text-uppercase fw-semibold">Descripción (Opcional)</label>
+						<textarea class="form-control custom-scroll" id="descripcion" name="descripcion" rows="3" placeholder="Descripción breve de los productos..."></textarea>
+					</div>
+					<button type="submit" class="btn btn-primary-gradient w-100 py-2 fw-bold" id="btnSubmit">
+						<i class="bi bi-save me-2"></i>Registrar Categoría
+					</button>
+				</form>
+			</div>
+		</div>
+
+		<!-- Columna Derecha: Tabla de Categorías -->
+		<div class="col-lg-8">
+			<div class="glass-card p-0 overflow-hidden h-100 d-flex flex-column">
+				<div class="p-3 border-bottom border-secondary bg-dark bg-opacity-25">
+					<h2 class="h6 fw-bold text-white mb-0 text-uppercase tracking-wide"><i class="bi bi-list-ul me-2"></i>Listado de Categorías</h2>
+				</div>
+				<div class="table-responsive flex-grow-1 custom-scroll">
+					<table class="table table-hover align-middle mb-0">
+						<thead style="background: rgba(0,0,0,0.2);">
+							<tr>
+								<th class="ps-4 py-3" style="width: 30%;">Nombre</th>
+								<th class="py-3" style="width: 50%;">Descripción</th>
+								<th class="text-end pe-4 py-3" style="width: 20%;">Acciones</th>
+							</tr>
+						</thead>
+						<tbody>
+							{categorias.length === 0 ? (
+								<tr>
+									<td colspan="3" class="text-center py-5 text-muted">
+										<i class="bi bi-tags fs-1 d-block mb-2 opacity-50"></i>
+										No hay categorías registradas.
+									</td>
+								</tr>
+							) : (
+								categorias.map((cat: any) => (
+									<tr>
+										<td class="ps-4">
+											<div class="fw-semibold text-white">{cat.nombre}</div>
+										</td>
+										<td>
+											<span class="text-muted small">{cat.descripcion || 'Sin descripción'}</span>
+										</td>
+										<td class="text-end pe-4">
+											<button class="btn btn-sm btn-outline-light border-0 me-1" title="Editar" onclick={`editarCategoria(${cat.id_categoria}, '${cat.nombre.replace(/'/g, "\\'")}', '${(cat.descripcion || '').replace(/'/g, "\\'")}')`}><i class="bi bi-pencil"></i></button>
+											<button class="btn btn-sm btn-outline-danger border-0" title="Eliminar" onclick={`eliminarCategoria(${cat.id_categoria})`}><i class="bi bi-trash"></i></button>
+										</td>
+									</tr>
+								))
+							)}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+</Layout>
+
+<script is:inline>
+	document.addEventListener('DOMContentLoaded', () => {
+		const form = document.getElementById('formNuevaCategoria');
+		const btnSubmit = document.getElementById('btnSubmit');
+
+		form.addEventListener('submit', async (e) => {
+			e.preventDefault();
+			
+			if (!form.checkValidity()) {
+				e.stopPropagation();
+				form.classList.add('was-validated');
+				return;
+			}
+
+			const formData = new FormData(form);
+			const data = {
+				nombre: formData.get('nombre'),
+				descripcion: formData.get('descripcion')
+			};
+
+			const originalText = btnSubmit.innerHTML;
+
+			try {
+				btnSubmit.disabled = true;
+				btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Guardando...';
+
+				const response = await fetch('/api/categorias', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(data)
+				});
+
+				let result;
+				try {
+					result = await response.json();
+				} catch (e) {
+					throw new Error('La respuesta del servidor no es un JSON válido.');
+				}
+
+				if (!response.ok || !result.success) {
+					throw new Error(result.error || 'Ocurrió un problema inesperado al guardar la categoría.');
+				}
+
+				await Swal.fire({
+					title: '¡Registrada!',
+					text: 'La categoría ha sido guardada con éxito.',
+					icon: 'success',
+					background: '#1e1f22',
+					color: '#fff',
+					confirmButtonColor: '#4f46e5',
+					timer: 1500,
+					showConfirmButton: false
+				});
+				window.location.reload();
+				
+			} catch (error) {
+				Swal.fire({
+					title: 'Error de Red / Servidor',
+					text: error.message,
+					icon: 'error',
+					background: '#1e1f22',
+					color: '#fff',
+					confirmButtonColor: '#4f46e5'
+				});
+			} finally {
+				// Siempre restablecer el botón para evitar que se quede congelado
+				btnSubmit.disabled = false;
+				btnSubmit.innerHTML = originalText;
+			}
+		});
+	});
+
+	// Funciones Globales para Editar y Eliminar
+	window.eliminarCategoria = async (id) => {
+		const result = await Swal.fire({
+			title: '¿Eliminar Categoría?',
+			text: "Esta acción no se puede deshacer.",
+			icon: 'warning',
+			showCancelButton: true,
+			background: '#1e1f22',
+			color: '#fff',
+			confirmButtonColor: '#d33',
+			cancelButtonColor: '#4f46e5',
+			confirmButtonText: 'Sí, eliminar',
+			cancelButtonText: 'Cancelar'
+		});
+
+		if (result.isConfirmed) {
+			try {
+				const res = await fetch(`/api/categorias/${id}`, { method: 'DELETE' });
+				const data = await res.json();
+				if (!res.ok) throw new Error(data.error || 'Error al eliminar');
+				
+				await Swal.fire({ title: 'Eliminado', text: 'La categoría fue eliminada.', icon: 'success', background: '#1e1f22', color: '#fff', timer: 1500, showConfirmButton: false });
+				window.location.reload();
+			} catch (error) {
+				Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#1e1f22', color: '#fff' });
+			}
+		}
+	};
+
+	window.editarCategoria = async (id, nombre, descripcion) => {
+		const { value: formValues } = await Swal.fire({
+			title: 'Editar Categoría',
+			html:
+				`<div class="text-start mb-3"><label class="text-white small mb-1">Nombre</label><input id="swal-input1" class="form-control" value="${nombre}"></div>` +
+				`<div class="text-start"><label class="text-white small mb-1">Descripción</label><textarea id="swal-input2" class="form-control">${descripcion}</textarea></div>`,
+			focusConfirm: false,
+			showCancelButton: true,
+			background: '#1e1f22',
+			color: '#fff',
+			confirmButtonColor: '#4f46e5',
+			confirmButtonText: 'Guardar Cambios',
+			preConfirm: () => {
+				const newNombre = document.getElementById('swal-input1').value;
+				if (!newNombre) { Swal.showValidationMessage('El nombre es obligatorio'); return false; }
+				return { nombre: newNombre, descripcion: document.getElementById('swal-input2').value };
+			}
+		});
+
+		if (formValues) {
+			try {
+				const res = await fetch(`/api/categorias/${id}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(formValues)
+				});
+				const data = await res.json();
+				if (!res.ok) throw new Error(data.error || 'Error al actualizar');
+				
+				await Swal.fire({ title: 'Actualizado', text: 'Datos guardados con éxito.', icon: 'success', background: '#1e1f22', color: '#fff', timer: 1500, showConfirmButton: false });
+				window.location.reload();
+			} catch (error) {
+				Swal.fire({ title: 'Error', text: error.message, icon: 'error', background: '#1e1f22', color: '#fff' });
+			}
+		}
+	};
+</script>
+
+<style>
+  .custom-scroll::-webkit-scrollbar { width: 6px; }
+  .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+  .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+  .custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+</style>
